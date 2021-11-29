@@ -152,7 +152,7 @@ func handleMenu() bool {
 			retval = false
 			
 		case 1:
-			fmt.Println("TODO: select podcast...")
+			doSelectPodcast()
 			
 		case 2:
 			fmt.Println("TODO: play episode...")
@@ -180,6 +180,51 @@ func handleMenu() bool {
 	
 }
 
+func doSelectPodcast() {
+
+	const DBNAME string = "podcasts.db"
+	
+	// check sqlite database for existence (create if necessary)
+	var db *sql.DB
+	db, err := sql.Open("sqlite3", DBNAME)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer db.Close()
+
+	rows, err := db.Query("SELECT id, name, url FROM Podcast ORDER BY name, id;")
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var p Podcast
+
+		err = rows.Scan(&p.Id, &p.Name, &p.Url)
+
+		if err != nil {
+			panic(err)
+		}
+
+		// fmt.Printf("[%d] \t %s (%s)\n", p.Id, p.Name, p.Url)
+		fmt.Printf("[%d] \t %s\n", p.Id, p.Name)
+	}
+
+	err = rows.Err()
+
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println()
+
+}
+
 func doImportOpml() {
 
 	fmt.Print("OPML file: ")
@@ -194,9 +239,38 @@ func doImportOpml() {
 	s := Subscriptions{Podcasts: readSubscriptionsFromOpml(opmlFile)}
 
 	if (len(s.Podcasts) > 0) {
-		for _, sub := range s.Podcasts {
-			fmt.Printf("[%d] %s (%s)\n", sub.Id, sub.Name, sub.Url)
+
+		const DBNAME string = "podcasts.db"
+		
+		// check sqlite database for existence (create if necessary)
+		var db *sql.DB
+		db, err = sql.Open("sqlite3", DBNAME)
+
+		if err != nil {
+			panic(err)
 		}
+
+		defer db.Close()
+
+		var tx *sql.Tx
+		tx, err = db.Begin()
+
+		if err == nil {
+
+			stmt, err := tx.Prepare("INSERT INTO Podcast (id, name, url) VALUES (?, ?, ?);")
+
+			if err == nil {
+				defer stmt.Close()
+
+				for _, sub := range s.Podcasts {
+					stmt.Exec(sub.Id, sub.Name, sub.Url);
+				}
+
+				tx.Commit()
+			}
+
+		}
+
 	} else {
 		fmt.Println("No subscriptions found.")
 	}
